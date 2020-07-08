@@ -311,6 +311,9 @@ SVG
 
 		$self->{svg} .= sprintf qq/<title>%s<\/title>/, $attr->{title}
 			if $attr->{title}; # should be first element within g container
+
+		$self->{svg} .= sprintf qq/<fullname>%s<\/fullname>/, $attr->{fullname}
+			if $attr->{fullname}; # should be first element within g container
 	}
 
 	sub group_end {
@@ -578,11 +581,15 @@ sub flow {
 		if (defined $Tmp{$k}->{delta}) {
 			$Node{"$k;$v"}->{delta} = delete $Tmp{$k}->{delta};
 		}
+		if (defined $Tmp{$k}->{fullname}) {
+            $Node{"$k;$v"}->{fullname} = delete $Tmp{$k}->{fullname};
+        }
 		delete $Tmp{$k};
 	}
 
 	for ($i = $len_same; $i <= $len_b; $i++) {
 		my $k = "$this->[$i];$i";
+		$Tmp{$k}->{fullname} = join(".", @$this[1..$i]);
 		$Tmp{$k}->{stime} = $v;
 		if (defined $d) {
 			$Tmp{$k}->{delta} += $i == $len_b ? $d : 0;
@@ -669,7 +676,7 @@ foreach (@SortedData) {
 	}
 
 	# merge frames and populate %Node:
-	$last = flow($last, [ '', split ";", $stack ], $time, $delta);
+	$last = flow($last, [ 'all', split ";", $stack ], $time, $delta);
 
 	if (defined $samples2) {
 		$time += $samples2;
@@ -826,7 +833,7 @@ my $inc = <<INC;
 		e.removeAttribute("_orig_"+attr);
 	}
 	function g_to_text(e) {
-		var text = find_child(e, "title").firstChild.nodeValue;
+		var text = find_child(e, "fullname").firstChild.nodeValue;
 		return (text)
 	}
 	function g_to_func(e) {
@@ -1108,8 +1115,9 @@ while (my ($id, $node) = each %Node) {
 	my ($func, $depth, $etime) = split ";", $id;
 	my $stime = $node->{stime};
 	my $delta = $node->{delta};
+	my $fullname = $node->{fullname};
 
-	$etime = $timemax if $func eq "" and $depth == 0;
+	$etime = $timemax if $func eq "all" and $depth == 0;
 
 	my $x1 = $xpad + $stime * $widthpertime;
 	my $x2 = $xpad + $etime * $widthpertime;
@@ -1127,8 +1135,10 @@ while (my ($id, $node) = each %Node) {
 		=~ s/(^[-+]?\d+?(?=(?>(?:\d{3})+)(?!\d))|\G\d{3}(?=\d))/$1,/g;
 
 	my $info;
-	if ($func eq "" and $depth == 0) {
+	my $full_info;
+	if ($func eq "all" and $depth == 0) {
 		$info = "all ($samples_txt $countname, 100%)";
+		$full_info = $info; 
 	} else {
 		my $pct = sprintf "%.2f", ((100 * $samples) / ($timemax * $factor));
 		my $escaped_func = $func;
@@ -1140,16 +1150,19 @@ while (my ($id, $node) = each %Node) {
 		$escaped_func =~ s/_\[[kwij]\]$//;	# strip any annotation
 		unless (defined $delta) {
 			$info = "$escaped_func ($samples_txt $countname, $pct%)";
+			$full_info = "$fullname ($samples_txt $countname, $pct%)";
 		} else {
 			my $d = $negate ? -$delta : $delta;
 			my $deltapct = sprintf "%.2f", ((100 * $d) / ($timemax * $factor));
 			$deltapct = $d > 0 ? "+$deltapct" : $deltapct;
 			$info = "$escaped_func ($samples_txt $countname, $pct%; $deltapct%)";
+			$full_info = "$fullname ($samples_txt $countname, $pct%; $deltapct%)";
 		}
 	}
 
 	my $nameattr = { %{ $nameattr{$func}||{} } }; # shallow clone
 	$nameattr->{title}       ||= $info;
+	$nameattr->{fullname}    ||= $full_info;
 	$im->group_start($nameattr);
 
 	my $color;
